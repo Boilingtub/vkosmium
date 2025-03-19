@@ -27,14 +27,12 @@ static const uint32_t DEFAULT_WINDOW_HEIGHT = 600;
 static const char CONST_APPLICATION_NAME[] = "Hello Triangle";
 static const char CONST_ENGINE_NAME[] = "osmium";
 
-void initWindow(GLFWwindow *window) {
-  glfwInit();
-  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-  window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, "Vulkan", NULL, NULL);
-  return;
-}
+struct State {
+  GLFWwindow *window = nullptr;
+  VkInstance instance = nullptr;
+  VkDebugUtilsMessengerEXT debugMessenger = nullptr;
+  VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+};
 
 bool checkValidationLayerSupport() {
   uint32_t layerCount;
@@ -58,6 +56,31 @@ bool checkValidationLayerSupport() {
   return true;
 }
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+  VkDebugUtilsMessageTypeFlagsEXT messageType,
+  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+  void* pUserData) {
+  
+  fprintf(stderr,"validation layer: %s\n", pCallbackData->pMessage);
+  return VK_FALSE;
+
+}
+
+void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
+  createInfo = {};
+  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+  createInfo.messageSeverity = 
+    VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+    VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+    VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+  createInfo.messageType = 
+    VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+    VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | 
+    VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+  createInfo.pfnUserCallback = debugCallback;
+  createInfo.pUserData = nullptr;
+}
 
 std::vector<const char*> getRequiredExtensions() {
   uint32_t glfwExtensionCount = 0;
@@ -72,7 +95,6 @@ std::vector<const char*> getRequiredExtensions() {
   return extensions;
 
 }
-
 
 void createInstance(VkInstance *instance) {
   if (enableValiationLayers && !checkValidationLayerSupport()) {
@@ -90,12 +112,17 @@ void createInstance(VkInstance *instance) {
   createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   createInfo.pApplicationInfo = &appInfo;
   
+  VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
   if (enableValiationLayers) {
     createInfo.enabledLayerCount = validationLayers_count;
     createInfo.ppEnabledLayerNames = validationLayers;
+
+    populateDebugMessengerCreateInfo(debugCreateInfo);
+    createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
   } 
   else {
     createInfo.enabledLayerCount = 0;
+    createInfo.pNext = nullptr;
   }
   
   std::vector<const char*> extensions = getRequiredExtensions();
@@ -103,22 +130,10 @@ void createInstance(VkInstance *instance) {
   createInfo.ppEnabledExtensionNames = extensions.data();
   
 
-  VkResult result = vkCreateInstance(&createInfo, NULL, instance);
-  if(result != VK_SUCCESS) {
+  if (vkCreateInstance(&createInfo, NULL, instance) != VK_SUCCESS) {
     fprintf(stderr,"failed to create instance!");
     exit(EXIT_SUCCESS);
   } 
-}
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-  VkDebugUtilsMessageTypeFlagsEXT messageType,
-  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-  void* pUserData) {
-  
-  fprintf(stderr,"validation layer: %s\n", pCallbackData->pMessage);
-  return VK_FALSE;
-
 }
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
@@ -135,6 +150,17 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
   
 }
 
+void setupDebugMessenger(VkInstance* instance,VkDebugUtilsMessengerEXT* debugMessenger) {
+  if (!enableValiationLayers) return;
+  VkDebugUtilsMessengerCreateInfoEXT createInfo;
+  populateDebugMessengerCreateInfo(createInfo);
+
+  if(CreateDebugUtilsMessengerEXT(*instance, &createInfo, nullptr, debugMessenger) != VK_SUCCESS) {
+    fprintf(stderr, "failed to setup debug messenger!\n");
+    exit(EXIT_FAILURE);
+  }
+}
+
 void DestroyDebugUtilsMessengerEXT(VkInstance instance,
                                        VkDebugUtilsMessengerEXT debugMessenger,
                                       const VkAllocationCallbacks* pAllocator) {
@@ -146,56 +172,80 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
 }
 
 
+bool isDeviceSuitable(VkPhysicalDevice device) {
+  VkPhysicalDeviceP deviceProperties;
+  VkPhysicalDeviceFeatures deviceFeatures;
+  vkGetPhysicalDeviceProperties(device,&deviceProperties);
+  vkGetPhysicalDeviceFeatures(device,&deviceFeatures);
 
-void setupDebugMessenger(VkInstance* instance,VkDebugUtilsMessengerEXT* debugMessenger) {
-  if (!enableValiationLayers) return;
-  VkDebugUtilsMessengerCreateInfoEXT createInfo{};
-  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-  createInfo.messageSeverity = 
-    VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-    VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
-    VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-  createInfo.messageType = 
-    VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
-    VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | 
-    VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-  createInfo.pfnUserCallback = debugCallback;
-  createInfo.pUserData = nullptr;
 
-  if(CreateDebugUtilsMessengerEXT(*instance, &createInfo, nullptr, debugMessenger) != VK_SUCCESS) {
-    fprintf(stderr, "failed to setup debug messenger!\n");
+  return true;
+}
+
+void pickPhysicalDevice(State* state) {
+  uint32_t deviceCount = 0;
+  vkEnumeratePhysicalDevices(state->instance, &deviceCount,nullptr);
+  if (deviceCount == 0) {
+    fprintf(stderr, "failed to find GPU's with Vulkan Support!");
     exit(EXIT_FAILURE);
   }
+
+  VkPhysicalDevice devices[deviceCount];
+  vkEnumeratePhysicalDevices(state->instance, &deviceCount, devices);
+  
+  for (const VkPhysicalDevice &device: devices) {
+    if(isDeviceSuitable(device)) {
+      state->physicalDevice = device;
+      break;
+    }
+  }
+
+  if(state->physicalDevice == VK_NULL_HANDLE) {
+    fprintf(stderr, "failed to find a suitable GPU");
+  }
+  
+};
+
+
+void initWindow(State* state) {
+  glfwInit();
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
+  state->window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
+                                   "Vulkan", NULL, NULL);
 }
 
-void initVulkan(VkInstance *instance, VkDebugUtilsMessengerEXT* debugMessenger) {
-  createInstance(instance);
-  setupDebugMessenger(instance, debugMessenger);
+void initVulkan(State* state) {
+  createInstance(&state->instance);
+  setupDebugMessenger(&state->instance, &state->debugMessenger);
+  pickPhysicalDevice();
 }
 
-void mainloop(GLFWwindow* window) {
-  while (!glfwWindowShouldClose(window)) {
+void mainloop(State* state) {
+  while (!glfwWindowShouldClose(state->window)) {
+    if (glfwGetKey(state->window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+      glfwSetWindowShouldClose(state->window, true);
+    }
     glfwPollEvents();
   }
 }
 
-void cleanup(GLFWwindow *window, VkInstance* instance, VkDebugUtilsMessengerEXT* debugMessenger) {
+void cleanup(State *state) {
   if (enableValiationLayers) {
-    DestroyDebugUtilsMessengerEXT(*instance, *debugMessenger, nullptr);
+    DestroyDebugUtilsMessengerEXT(state->instance, state->debugMessenger, nullptr);
   }
-  vkDestroyInstance(*instance, NULL);
-  glfwDestroyWindow(window);
+  vkDestroyInstance(state->instance, NULL);
+  glfwDestroyWindow(state->window);
   glfwTerminate();
 }
 
 void run() {
-  GLFWwindow *window = NULL;
-  VkInstance instance;
-  VkDebugUtilsMessengerEXT debugMessenger;
-  initWindow(window);
-  initVulkan(&instance, &debugMessenger);
-  mainloop(window);
-  cleanup(window,&instance,&debugMessenger);
+  State state;
+  initWindow(&state);
+  initVulkan(&state);
+  mainloop(&state);
+  cleanup(&state);
 }
 
 int main() {
@@ -208,4 +258,4 @@ int main() {
   return EXIT_SUCCESS;
 
 }
-//56
+//59
