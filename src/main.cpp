@@ -172,13 +172,12 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
 }
 
 
-bool isDeviceSuitable(VkPhysicalDevice device) {
-  VkPhysicalDeviceP deviceProperties;
+int isDeviceSuitable(VkPhysicalDevice device) {
+  VkPhysicalDeviceProperties deviceProperties;
   VkPhysicalDeviceFeatures deviceFeatures;
   vkGetPhysicalDeviceProperties(device,&deviceProperties);
   vkGetPhysicalDeviceFeatures(device,&deviceFeatures);
-
-
+   
   return true;
 }
 
@@ -193,17 +192,18 @@ void pickPhysicalDevice(State* state) {
   VkPhysicalDevice devices[deviceCount];
   vkEnumeratePhysicalDevices(state->instance, &deviceCount, devices);
   
+  int highest_score = 0;
   for (const VkPhysicalDevice &device: devices) {
-    if(isDeviceSuitable(device)) {
+    int score = isDeviceSuitable(device);
+    if (score > highest_score) {
       state->physicalDevice = device;
-      break;
+      
     }
   }
 
   if(state->physicalDevice == VK_NULL_HANDLE) {
     fprintf(stderr, "failed to find a suitable GPU");
   }
-  
 };
 
 
